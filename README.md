@@ -2,7 +2,7 @@
 
 Lightweight dependency injection container that I've been using in my Android projects. 
 
-There's only a single .java file (DI.java) and a matching test so just copy and paste to use. Hope it's of some use :)
+There's only a single .java file (Graph.java) and a matching test file so just copy and paste to use. Hope it's of some use :)
 
 ## 2. Usage
 
@@ -20,15 +20,17 @@ public class EnglishMan implements Person {
 }
 
 // Add a provider to the container
-DI.add(Person.class, new DI.Providers.Provider<Person, Void>() {
-            @Override
-            public TestInterface provide(DI diContainer, Void empty) {
-                return new EnglishMan();
-            }
-        });
+Graph graph = new Graph.Builder()
+            .add(Person.class, new Graph.Suppliers.Supplier<Person, Void>() {
+                @Override
+                public TestInterface supply(Graph graph, Void empty) {
+                    return new EnglishMan();
+                }
+            })
+            .build();
 
 // ...and getting an instance:
-Person person = DI.get(Person.class);
+Person person = graph.get(Person.class);
 String theySaid = person.sayHello();
 System.out.println(theySaid); // Prints "Hello!"
 ```
@@ -46,40 +48,44 @@ public class Man implements Person {
 }
 
 // Add a provider to the container (notice we now use the second parameter):
-DI.add(Person.class, new DI.Providers.Provider<Person, String>() {
-            @Override
-            public TestInterface provide(DI diContainer, String helloMsg) {
-                return new Man(helloMsg);
-            }
-        });
+Graph graph = new Graph.Builder()
+            .add(Person.class, new Graph.Suppliers.Supplier<Person, String>() {
+                @Override
+                public TestInterface supply(Graph graph, String helloMsg) {
+                    return new Man(helloMsg);
+                }
+            })
+            .build();
 
 // When we get we can pass in our parameters
-Person spanishMan = DI.get(Person.class, "Hola!");
+Person spanishMan = graph.get(Person.class, "Hola!");
 String theySaid = spanishPerson.sayHello();
 System.out.println(theySaid); // Prints "Hola!"
 ```
+Since our supply method is given the graph as an argument we can also use this to provide nested dependencies.
 
 ### 2.3. Scoped
 
-Sometimes, it's useful to have a dependency we've created to persist or stay in 'scope'. So the provide method is called the first tme we request it but on subsequent times we'll get the same instance.
+Sometimes, it's useful to have a dependency we've created to persist or stay in 'scope'. So the supply method is called the first tme we request it but on subsequent times we'll get the same instance.
 
 Re-using our Man class from above:
 
 ```
-Person spanishMan = DI.getScoped(Person.class, "Hola!", "SpanishScope");
-Person englishMan = DI.getScoped(Person.class, "Hello!", "EnglishScope");
+...
+Person spanishMan = graph.getScoped(Person.class, "Hola!", "SpanishScope");
+Person englishMan = graph.getScoped(Person.class, "Hello!", "EnglishScope");
 
 // Requesting objects with the same scope will yield the same instances
-DI.getScoped(Person.class, "SpanishScope") == spanishMan; // true
-DI.getScoped(Person.class, "EnglishScope") == englishMan; // true
+graph.getScoped(Person.class, "SpanishScope") == spanishMan; // true
+graph.getScoped(Person.class, "EnglishScope") == englishMan; // true
 ```
 
-*Important* Scoped objects are statically stored, you'll need to remove them when you're done:
+*Important* Scoped objects are stored, you'll need to remove them when you're done:
 
 ```
 // Removing scoped objects
-DI.remove(Person.class, "SpanishScope");
-DI.remove(Person.class, "EnglishScope");
+graph.remove(Person.class, "SpanishScope");
+graph.remove(Person.class, "EnglishScope");
 
 ```
 
@@ -88,15 +94,34 @@ DI.remove(Person.class, "EnglishScope");
 For times when we always want the same instance delivered, perhaps for something like a networking interface, we can use addSingleton:
 
 ```
-DI.addSingleton(INetworking.class, new DI.Providers.Provider<Person, NetworkConfig>() {
+Graph graph = new Graph.Builder()
+        .addSingleton(INetworking.class, new Graph.Suppliers.Supplier<INetworking, NetworkConfig>() {
             @Override
-            public INetworking provide(DI diContainer, NetworkConfig networkConfig) {
+            public INetworking supply(Graph graph, NetworkConfig networkConfig) {
                 return new NetworkingImplementation(networkConfig);
             }
-        });
+        })
+        .build();
+NetworkConfig config = /*Config creation*/;
+INetworking networking = graph.get(INetworking.class, config);
 ```
 
-When we call DI.get we'll always get the same instance i.e. the provide method will only be called once. 
+When we call graph.get we'll always get the same instance i.e. the supply method will only be called once.
+
+As mentioned before, we could actually provide the NetworkConfig dependency using the graph:
+
+```
+Graph graph = new Graph.Builder()
+        .add(INetworkConfig.class, /*Config creation*/)
+        .addSingleton(INetworking.class, new Graph.Suppliers.Supplier<INetworking, Void>() {
+            @Override
+            public INetworking supply(Graph graph, NetworkConfig networkConfig) {
+                return new NetworkingImplementation(graph.get(NetworkConfig.class));
+            }
+        })
+        .build();
+INetworking networking = graph.get(INetworking.class);
+```
 
 ### 2.5. Android Scoping Addendum
 
